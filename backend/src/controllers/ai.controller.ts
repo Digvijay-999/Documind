@@ -60,6 +60,7 @@ export const streamChatWithDocument = async (req: AuthRequest, res: Response): P
   }
 
   try {
+    console.log('[CHAT STREAM] authenticated');
     const { documentId, question } = chatSchema.parse(req.body);
 
     const document = await prisma.document.findUnique({ where: { id: documentId } });
@@ -74,6 +75,7 @@ export const streamChatWithDocument = async (req: AuthRequest, res: Response): P
       return;
     }
 
+    console.log('[CHAT STREAM] document verified');
     const startTime = Date.now();
     const { responseStream, chunks, model } = await ragService.streamAnswer(documentId, question);
 
@@ -120,7 +122,10 @@ export const streamChatWithDocument = async (req: AuthRequest, res: Response): P
     } else {
       console.error('Stream chat error:', error);
       if (!res.headersSent) {
-        res.status(500).json({ success: false, message: 'Internal server error during stream' });
+        const isRateLimit = error?.status === 429 || error?.code === 429 || error?.message?.includes('429') || error?.message?.includes('quota');
+        const statusCode = isRateLimit ? 429 : 500;
+        const message = isRateLimit ? 'AI service quota exceeded or rate limited. Please try again later.' : 'Internal server error during stream';
+        res.status(statusCode).json({ success: false, message });
       } else {
         res.write(`data: ${JSON.stringify({ error: 'Internal server error occurred mid-stream' })}\n\n`);
         res.end();

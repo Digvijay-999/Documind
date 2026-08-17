@@ -4,20 +4,39 @@ import prisma from '../src/utils/prisma';
 import fs from 'fs';
 import path from 'path';
 
-const MINIMAL_PDF_BASE64 = 'JVBERi0xLjQKMSAwIG9iaiA8PC9UeXBlIC9DYXRhbG9nIC9QYWdlcyAyIDAgUj4+IGVuZG9iaiAyIDAgb2JqIDw8L1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDE+PiBlbmRvYmogMyAwIG9iaiA8PC9UeXBlIC9QYWdlIC9QYXJlbnQgMiAwIFIgL01lZGlhQm94IFswIDAgMTAwIDEwMF0+PiBlbmRvYmogeHJlZiAwIDQgMDAwMDAwMDAwMCA2NTUzNSBmIA0KMDAwMDAwMDAwOSAwMDAwMCBuIA0KMDAwMDAwMDU2IDAwMDAwIG4gDQowMDAwMDAwMTExIDAwMDAwIG4gDQp0cmFpbGVyIDw8L1NpemUgNCAvUm9vdCAxIDAgUj4+IHN0YXJ0eHJlZiAxODkgJSVFT0Y=';
+jest.mock('@google/genai', () => {
+  return {
+    Type: {
+      STRING: 'STRING',
+      NUMBER: 'NUMBER',
+      INTEGER: 'INTEGER',
+      BOOLEAN: 'BOOLEAN',
+      ARRAY: 'ARRAY',
+      OBJECT: 'OBJECT',
+    },
+    GoogleGenAI: jest.fn().mockImplementation(() => {
+      return {
+        models: {
+          embedContent: jest.fn().mockResolvedValue({
+            embeddings: [{ values: Array(768).fill(0.1) }]
+          })
+        }
+      };
+    })
+  };
+});
 
 describe('Document Endpoints', () => {
   let user1Token: string;
   let user2Token: string;
   let documentId: string;
-  const testPdfPath = path.join(__dirname, 'test.pdf');
+  const testPdfPath = path.join(__dirname, 'fixtures', 'valid.pdf');
   const dummyTxtPath = path.join(__dirname, 'dummy.txt');
 
   beforeAll(async () => {
     await prisma.document.deleteMany();
     await prisma.user.deleteMany();
 
-    fs.writeFileSync(testPdfPath, Buffer.from(MINIMAL_PDF_BASE64, 'base64'));
     fs.writeFileSync(dummyTxtPath, 'hello world');
 
     const bcrypt = require('bcrypt');
@@ -40,7 +59,6 @@ describe('Document Endpoints', () => {
   afterAll(async () => {
     await prisma.document.deleteMany();
     await prisma.user.deleteMany();
-    if (fs.existsSync(testPdfPath)) fs.unlinkSync(testPdfPath);
     if (fs.existsSync(dummyTxtPath)) fs.unlinkSync(dummyTxtPath);
     
     // Clean up uploaded files in test environment
@@ -91,8 +109,32 @@ describe('Document Endpoints', () => {
       
     expect(res.statusCode).toBe(201);
     expect(res.body.success).toBe(true);
-    expect(res.body.data.name).toBe('test.pdf');
+    expect(res.body.data.name).toBe('valid.pdf');
     documentId = res.body.data.id;
+  });
+
+  it('12. Verify PDF text extraction finishes with non-empty text', async () => {
+    // Wait for the background processing to finish (usually very fast for small PDFs, but we will poll up to 5s)
+    let isReady = false;
+    let docData: any = null;
+    
+    for (let i = 0; i < 20; i++) {
+      const getRes = await request(app)
+        .get(`/api/documents/${documentId}`)
+        .set('Authorization', `Bearer ${user1Token}`);
+        
+      if (getRes.body.data && getRes.body.data.status === 'READY') {
+        isReady = true;
+        docData = getRes.body.data;
+        break;
+      } else if (getRes.body.data && getRes.body.data.status === 'FAILED') {
+        break;
+      }
+      await new Promise(r => setTimeout(r, 250));
+    }
+    
+    expect(isReady).toBe(true);
+    expect(docData.extractedTextLength).toBeGreaterThan(0);
   });
 
   it('5. GET user\'s documents', async () => {

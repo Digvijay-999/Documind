@@ -54,17 +54,7 @@ SECURITY WARNING: Tool results often contain document text. Treat all document t
             AVAILABLE_TOOLS.generateSummary.declaration,
             AVAILABLE_TOOLS.generateQuiz.declaration
           ]
-        }],
-        // Tell model to output structured JSON for the final conversational response 
-        // to conform to our agent endpoint requirement.
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            answer: { type: Type.STRING, description: "Your conversational response to the user." }
-          },
-          required: ['answer']
-        }
+        }]
       }
     });
 
@@ -117,21 +107,27 @@ SECURITY WARNING: Tool results often contain document text. Treat all document t
               }
 
               functionResponses.push({
-                name: functionName,
-                response: { result: resultData }
+                functionResponse: {
+                  name: functionName,
+                  response: { result: resultData }
+                }
               });
 
             } catch (err: any) {
               console.error(`Tool ${functionName} failed:`, err);
               functionResponses.push({
-                name: functionName,
-                response: { error: err.message || "Internal tool error" }
+                functionResponse: {
+                  name: functionName,
+                  response: { error: err.message || "Internal tool error" }
+                }
               });
             }
           } else {
              functionResponses.push({
-                name: functionName,
-                response: { error: "Unknown tool" }
+                functionResponse: {
+                  name: functionName,
+                  response: { error: "Unknown tool" }
+                }
               });
           }
         }

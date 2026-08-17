@@ -17,10 +17,17 @@ export class VectorService {
   }
 
   private async getCollection(): Promise<Collection> {
+    const dummyEmbedder = {
+      generate: async (texts: string[]): Promise<number[][]> => {
+        return []; // Never used because embeddings are provided explicitly
+      }
+    };
+    
     return await this.client.getOrCreateCollection({
       name: this.collectionName,
       // Optional: you can define distance function here, e.g. cosine
-      metadata: { "hnsw:space": "cosine" }
+      metadata: { "hnsw:space": "cosine" },
+      embeddingFunction: dummyEmbedder as any
     });
   }
 

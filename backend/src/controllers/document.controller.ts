@@ -2,11 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import fs from 'fs';
 import path from 'path';
-let pdfParse: any;
-try {
-  const lib = require('pdf-parse');
-  pdfParse = typeof lib === 'function' ? lib : (lib.default || lib);
-} catch (e) {}
+import pdfParse = require('pdf-parse');
 import { AuthRequest } from '../middleware/authMiddleware';
 
 import { ChunkingService } from '../services/chunking.service';
@@ -66,7 +62,7 @@ export const uploadDocument = async (req: AuthRequest, res: Response): Promise<v
     // Process PDF synchronously in the background (no queue yet)
     try {
       const dataBuffer = await fs.promises.readFile(file.path);
-      const data = await (pdfParse as any)(dataBuffer);
+      const data = await pdfParse(dataBuffer);
       const extractedText = data.text;
 
       // Pipeline: Chunking -> Embedding -> Vector DB

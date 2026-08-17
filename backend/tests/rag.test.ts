@@ -10,31 +10,25 @@ jest.mock('pdf-parse', () => {
   return jest.fn().mockResolvedValue({ text: 'Mocked extracted text for normalization' });
 });
 
-// Mock the services before they are imported in controllers
-jest.mock('../src/services/embedding.service', () => {
+jest.mock('@google/genai', () => {
   return {
-    EmbeddingService: jest.fn().mockImplementation(() => {
+    Type: {
+      STRING: 'STRING',
+      NUMBER: 'NUMBER',
+      INTEGER: 'INTEGER',
+      BOOLEAN: 'BOOLEAN',
+      ARRAY: 'ARRAY',
+      OBJECT: 'OBJECT',
+    },
+    GoogleGenAI: jest.fn().mockImplementation(() => {
       return {
-        generateEmbedding: jest.fn().mockResolvedValue(Array(768).fill(0.1)),
-        generateEmbeddings: jest.fn().mockResolvedValue([Array(768).fill(0.1)]),
+        models: {
+          embedContent: jest.fn().mockResolvedValue({
+            embeddings: [{ values: Array(768).fill(0.1) }]
+          })
+        }
       };
-    }),
-  };
-});
-
-jest.mock('../src/services/vector.service', () => {
-  return {
-    VectorService: jest.fn().mockImplementation(() => {
-      return {
-        addChunks: jest.fn().mockResolvedValue(undefined),
-        deleteDocument: jest.fn().mockResolvedValue(undefined),
-        queryDocument: jest.fn().mockResolvedValue({
-          documents: [['Mocked chunk text for normalization']],
-          metadatas: [[{ chunkIndex: 0 }]],
-          distances: [[0.123]]
-        }),
-      };
-    }),
+    })
   };
 });
 
@@ -121,6 +115,6 @@ describe('RAG Pipeline & Search Endpoints', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.results.length).toBeGreaterThan(0);
-    expect(res.body.results[0].text).toContain('Mocked chunk');
+    expect(res.body.results[0].text).toContain('Mocked extracted text');
   });
 });

@@ -12,7 +12,7 @@ export class EmbeddingService {
     
     // The @google/genai SDK automatically picks up GEMINI_API_KEY from process.env if not explicitly passed
     this.ai = new GoogleGenAI({ apiKey: apiKey || 'dummy_key' });
-    this.model = process.env.EMBEDDING_MODEL || 'text-embedding-004';
+    this.model = process.env.EMBEDDING_MODEL || 'gemini-embedding-2';
   }
 
   /**
@@ -23,11 +23,15 @@ export class EmbeddingService {
       const response = await this.ai.models.embedContent({
         model: this.model,
         contents: text,
+        config: {
+          outputDimensionality: 768
+        }
       });
 
-      if (response.embeddings && response.embeddings.length > 0) {
+      if (response.embeddings && response.embeddings.length > 0 && response.embeddings[0].values) {
         return response.embeddings[0].values;
       }
+      throw new Error("No embedding values returned");
       throw new Error('No embedding returned from API');
     } catch (error) {
       console.error('Embedding generation failed:', error);
