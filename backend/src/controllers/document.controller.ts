@@ -2,8 +2,22 @@ import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import fs from 'fs';
 import path from 'path';
-const pdfParse = require('pdf-parse');
+let pdfParse: any;
+try {
+  const lib = require('pdf-parse');
+  pdfParse = typeof lib === 'function' ? lib : (lib.default || lib);
+} catch (e) {}
 import { AuthRequest } from '../middleware/authMiddleware';
+
+import { ChunkingService } from '../services/chunking.service';
+import { EmbeddingService } from '../services/embedding.service';
+import { VectorService } from '../services/vector.service';
+import { RagService } from '../services/rag.service';
+import { z } from 'zod';
+
+const embeddingService = new EmbeddingService();
+const vectorService = new VectorService();
+const ragService = new RagService();
 
 export const uploadDocument = async (req: AuthRequest, res: Response): Promise<void> => {
   const userId = req.user?.id;
@@ -53,16 +67,42 @@ export const uploadDocument = async (req: AuthRequest, res: Response): Promise<v
     try {
       const dataBuffer = await fs.promises.readFile(file.path);
       const data = await (pdfParse as any)(dataBuffer);
+      const extractedText = data.text;
+
+      // Pipeline: Chunking -> Embedding -> Vector DB
+      console.log(`Extracting text for ${document.id}. Text length: ${extractedText.length}`);
+      
+      const chunks = ChunkingService.chunkText(extractedText);
+      console.log(`Generated ${chunks.length} chunks for ${document.id}`);
+
+      if (chunks.length > 0) {
+        // Clear any old vectors just in case it's a reprocess
+        await vectorService.deleteDocument(document.id);
+
+        const texts = chunks.map(c => c.text);
+        console.log(`Generating embeddings for ${document.id}...`);
+        const embeddings = await embeddingService.generateEmbeddings(texts);
+        console.log(`Embeddings generated. Storing in ChromaDB...`);
+
+        const metadatas = chunks.map(c => ({
+          documentId: document.id,
+          chunkIndex: c.chunkIndex,
+          originalFileName: file.originalname
+        }));
+
+        await vectorService.addChunks(document.id, texts, embeddings, metadatas);
+      }
 
       await prisma.document.update({
         where: { id: document.id },
         data: {
-          extractedText: data.text,
+          extractedText: extractedText,
           status: 'READY',
         },
       });
+      console.log(`Document ${document.id} processed successfully.`);
     } catch (parseError) {
-      console.error('PDF processing failed:', parseError);
+      console.error('Document processing failed:', parseError);
       await prisma.document.update({
         where: { id: document.id },
         data: { status: 'FAILED' },
@@ -157,6 +197,7 @@ export const deleteDocument = async (req: AuthRequest, res: Response): Promise<v
     }
 
     await prisma.document.delete({ where: { id: documentId } });
+    await vectorService.deleteDocument(documentId);
 
     // Try to delete the file
     try {
@@ -170,5 +211,52 @@ export const deleteDocument = async (req: AuthRequest, res: Response): Promise<v
     res.status(200).json({ success: true, message: 'Document deleted successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+const searchSchema = z.object({
+  query: z.string().min(1, 'Query is required')
+});
+
+export const searchDocument = async (req: AuthRequest, res: Response): Promise<void> => {
+  const userId = req.user?.id;
+  const documentId = req.params.id as string;
+
+  if (!userId) {
+    res.status(401).json({ success: false, message: 'Unauthorized' });
+    return;
+  }
+
+  try {
+    const validatedData = searchSchema.parse(req.body);
+
+    const document = await prisma.document.findUnique({
+      where: { id: documentId }
+    });
+
+    if (!document || document.userId !== userId) {
+      res.status(404).json({ success: false, message: 'Document not found or unauthorized' });
+      return;
+    }
+
+    if (document.status !== 'READY') {
+      res.status(400).json({ success: false, message: 'Document is not fully processed yet' });
+      return;
+    }
+
+    console.log(`Searching for "${validatedData.query}" in document ${documentId}`);
+    const results = await ragService.retrieveRelevantChunks(documentId, validatedData.query, 5);
+
+    res.status(200).json({
+      success: true,
+      results
+    });
+  } catch (error: any) {
+    if (error?.name === 'ZodError') {
+      res.status(400).json({ success: false, message: error.errors?.[0]?.message || 'Validation failed' });
+    } else {
+      console.error('Search error:', error);
+      res.status(500).json({ success: false, message: 'Internal server error during search' });
+    }
   }
 };

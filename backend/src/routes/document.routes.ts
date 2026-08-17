@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { uploadDocument, getDocuments, getDocument, deleteDocument } from '../controllers/document.controller';
+import { uploadDocument, getDocuments, getDocument, deleteDocument, searchDocument } from '../controllers/document.controller';
 import { authMiddleware } from '../middleware/authMiddleware';
 import multer from 'multer';
 import crypto from 'crypto';
@@ -46,5 +46,6 @@ router.post('/', authMiddleware, handleUploadError, uploadDocument);
 router.get('/', authMiddleware, getDocuments);
 router.get('/:id', authMiddleware, getDocument);
 router.delete('/:id', authMiddleware, deleteDocument);
+router.post('/:id/search', authMiddleware, searchDocument);
 
 export default router;
