@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  # Prepared for Phase 2+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-documind}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-documind_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # mongodb:
+  #   image: mongo:6
+  #   environment:
+  #     MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-root}
+  #     MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-example}
+  #   ports:
+  #     - "27017:27017"
+  #   volumes:
+  #     - mongodb_data:/data/db
+
+  # redis:
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis_data:/data
+
+volumes:
+  postgres_data:
+#   mongodb_data:
+#   redis_data:
