@@ -21,6 +21,9 @@ model User {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   documents    Document[]
+  aiUsages     AIUsage[]
+
+  @@map("users")
 }
 
 enum DocumentStatus {
@@ -33,16 +36,36 @@ enum DocumentStatus {
 model Document {
   id               String         @id @default(uuid())
   userId           String
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   name             String
   originalFileName String
   filePath         String
   fileSize         Int
   mimeType         String
   status           DocumentStatus @default(UPLOADED)
-  extractedText    String?
+  extractedText    String?        @db.Text
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  aiUsages         AIUsage[]
+
+  @@index([userId])
 }
 
+model AIUsage {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  documentId    String
+  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  model         String
+  inputTokens   Int
+  outputTokens  Int
+  totalTokens   Int
+  latencyMs     Int
+  estimatedCost Float
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@index([documentId])
+}
