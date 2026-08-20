@@ -12,7 +12,7 @@ export class VectorService {
   private collectionName = 'documind_documents';
 
   constructor() {
-    const url = process.env.CHROMADB_URL || 'http://localhost:8000';
+    const url = process.env.CHROMADB_URL || 'http://127.0.0.1:8000';
     this.client = new ChromaClient({ path: url });
   }
 

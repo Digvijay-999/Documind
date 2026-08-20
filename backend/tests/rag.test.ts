@@ -10,26 +10,56 @@ jest.mock('pdf-parse', () => {
   return jest.fn().mockResolvedValue({ text: 'Mocked extracted text for normalization' });
 });
 
-jest.mock('@google/genai', () => {
-  return {
-    Type: {
-      STRING: 'STRING',
-      NUMBER: 'NUMBER',
-      INTEGER: 'INTEGER',
-      BOOLEAN: 'BOOLEAN',
-      ARRAY: 'ARRAY',
-      OBJECT: 'OBJECT',
-    },
-    GoogleGenAI: jest.fn().mockImplementation(() => {
-      return {
-        models: {
-          embedContent: jest.fn().mockResolvedValue({
-            embeddings: [{ values: Array(768).fill(0.1) }]
+// Mock global fetch for OpenRouter embeddings
+const originalFetch = global.fetch;
+global.fetch = jest.fn().mockImplementation((url: any, options: any) => {
+  const urlStr = (url && url.url) ? url.url : String(url);
+  if (urlStr.includes('openrouter.ai/api/v1/embeddings')) {
+    let inputLen = 1;
+    if (options && options.body) {
+      const body = JSON.parse(options.body);
+      if (Array.isArray(body.input)) {
+        inputLen = body.input.length;
+      }
+    }
+    const data = Array(inputLen).fill(0).map((_, i) => ({ index: i, embedding: Array(2048).fill(0.1) }));
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ data })
+    });
+  }
+  return originalFetch(url, options);
+}) as jest.Mock;
+
+jest.mock('groq-sdk', () => {
+  return jest.fn().mockImplementation(() => {
+    return {
+      chat: {
+        completions: {
+          create: jest.fn().mockImplementation(async (params) => {
+            if (params.stream) {
+              return (async function* () {
+                yield { choices: [{ delta: { content: 'This ' } }] };
+                yield { choices: [{ delta: { content: 'is ' } }] };
+                yield { choices: [{ delta: { content: 'a stream.' } }] };
+              })();
+            }
+            return {
+              choices: [{
+                message: {
+                  content: JSON.stringify({
+                    answer: "This is a mocked structured answer.",
+                    sources: [{ documentId: 'mock-doc', chunkIndex: 0, score: 0.99 }]
+                  })
+                }
+              }],
+              usage: { prompt_tokens: 50, completion_tokens: 20, total_tokens: 70 }
+            };
           })
         }
-      };
-    })
-  };
+      }
+    };
+  });
 });
 
 describe('RAG Pipeline & Search Endpoints', () => {

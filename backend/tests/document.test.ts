@@ -4,6 +4,27 @@ import prisma from '../src/utils/prisma';
 import fs from 'fs';
 import path from 'path';
 
+// Mock global fetch for OpenRouter embeddings
+const originalFetch = global.fetch;
+global.fetch = jest.fn().mockImplementation((url: any, options: any) => {
+  const urlStr = (url && url.url) ? url.url : String(url);
+  if (urlStr.includes('openrouter.ai/api/v1/embeddings')) {
+    let inputLen = 1;
+    if (options && options.body) {
+      const body = JSON.parse(options.body);
+      if (Array.isArray(body.input)) {
+        inputLen = body.input.length;
+      }
+    }
+    const data = Array(inputLen).fill(0).map((_, i) => ({ index: i, embedding: Array(2048).fill(0.1) }));
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ data })
+    });
+  }
+  return originalFetch(url, options);
+}) as jest.Mock;
+
 jest.mock('@google/genai', () => {
   return {
     Type: {
@@ -17,9 +38,7 @@ jest.mock('@google/genai', () => {
     GoogleGenAI: jest.fn().mockImplementation(() => {
       return {
         models: {
-          embedContent: jest.fn().mockResolvedValue({
-            embeddings: [{ values: Array(768).fill(0.1) }]
-          })
+          // LLM models might still be used but not explicitly tested here
         }
       };
     })

@@ -1,18 +1,15 @@
-import { GoogleGenAI } from '@google/genai';
-
 export class EmbeddingService {
-  private ai: GoogleGenAI;
+  private apiKey: string;
   private model: string;
+  private baseUrl = 'https://openrouter.ai/api/v1/embeddings';
 
   constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.warn('GEMINI_API_KEY is not set. Embeddings will fail or use default behavior.');
+    this.apiKey = process.env.OPENROUTER_API_KEY || '';
+    if (!this.apiKey) {
+      console.warn('OPENROUTER_API_KEY is not set. Embeddings will fail.');
     }
     
-    // The @google/genai SDK automatically picks up GEMINI_API_KEY from process.env if not explicitly passed
-    this.ai = new GoogleGenAI({ apiKey: apiKey || 'dummy_key' });
-    this.model = process.env.EMBEDDING_MODEL || 'gemini-embedding-2';
+    this.model = process.env.OPENROUTER_EMBEDDING_MODEL || 'nvidia/nemotron-3-embed-1b:free';
   }
 
   /**
@@ -20,38 +17,95 @@ export class EmbeddingService {
    */
   async generateEmbedding(text: string): Promise<number[]> {
     try {
-      const response = await this.ai.models.embedContent({
-        model: this.model,
-        contents: text,
-        config: {
-          outputDimensionality: 768
-        }
+      console.log('Embedding provider: OpenRouter');
+      console.log(`Embedding model: ${this.model}`);
+      
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'http://localhost:3000',
+          'X-Title': 'DocuMind AI'
+        },
+        body: JSON.stringify({
+          model: this.model,
+          input: text
+        })
       });
 
-      if (response.embeddings && response.embeddings.length > 0 && response.embeddings[0].values) {
-        return response.embeddings[0].values;
+      if (!response.ok) {
+        const errorText = await response.text();
+        const err = new Error(`OpenRouter API error: ${response.status} ${response.statusText}`);
+        (err as any).status = response.status;
+        (err as any).details = errorText;
+        throw err;
       }
-      throw new Error("No embedding values returned");
-      throw new Error('No embedding returned from API');
+
+      const data = await response.json();
+
+      if (data && data.data && data.data.length > 0 && data.data[0].embedding) {
+        return data.data[0].embedding;
+      }
+      
+      throw new Error("No embedding values returned from OpenRouter");
     } catch (error) {
-      console.error('Embedding generation failed:', error);
+      console.error('Embedding generation failed:', error instanceof Error ? error.message : error);
       throw error;
     }
   }
 
   /**
    * Generate embeddings for multiple chunks.
-   * Processes sequentially to avoid aggressive rate limits on free tiers.
+   * OpenRouter API supports passing an array of strings to `input`.
    */
   async generateEmbeddings(chunks: string[]): Promise<number[][]> {
-    const embeddings: number[][] = [];
+    if (chunks.length === 0) return [];
     
-    // Process in batches or sequentially
-    for (const chunk of chunks) {
-      const embedding = await this.generateEmbedding(chunk);
-      embeddings.push(embedding);
+    try {
+      console.log('Generating embeddings...');
+      console.log('Embedding provider: OpenRouter');
+      console.log(`Embedding model: ${this.model}`);
+      
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'http://localhost:3000',
+          'X-Title': 'DocuMind AI'
+        },
+        body: JSON.stringify({
+          model: this.model,
+          input: chunks
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const err = new Error(`OpenRouter API error: ${response.status} ${response.statusText}`);
+        (err as any).status = response.status;
+        (err as any).details = errorText;
+        throw err;
+      }
+
+      const data = await response.json();
+
+      if (data && data.data && data.data.length === chunks.length) {
+        console.log(`Generated ${chunks.length} embeddings`);
+        // Sort embeddings by index to match chunks order
+        const sortedData = [...data.data].sort((a, b) => a.index - b.index);
+        const firstEmbedding = sortedData[0].embedding;
+        if (firstEmbedding) {
+            console.log(`Vector dimension: ${firstEmbedding.length}`);
+        }
+        return sortedData.map(item => item.embedding);
+      }
+      
+      throw new Error("Mismatch in embeddings returned from OpenRouter");
+    } catch (error) {
+      console.error('Batch embedding generation failed:', error instanceof Error ? error.message : error);
+      throw error;
     }
-    
-    return embeddings;
   }
 }

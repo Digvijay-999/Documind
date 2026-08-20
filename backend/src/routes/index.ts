@@ -4,6 +4,10 @@ import authRoutes from './auth.routes';
 import adminRoutes from './admin.routes';
 import documentRoutes from './document.routes';
 import aiRoutes from './ai.routes';
+import chatRoutes from './chat.routes';
+
+import publicRoutes from './public.routes';
+import paymentRoutes from './payment.routes';
 
 const router = Router();
 
@@ -19,5 +23,8 @@ router.use('/auth', authRoutes);
 router.use('/admin', adminRoutes);
 router.use('/documents', documentRoutes);
 router.use('/ai', aiRoutes);
+router.use('/chat', chatRoutes);
+router.use('/payments', paymentRoutes);
+router.use('/public', publicRoutes);
 
 export default router;

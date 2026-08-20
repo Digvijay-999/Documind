@@ -12,16 +12,30 @@ enum Role {
   ADMIN
 }
 
+enum SubscriptionPlan {
+  FREE
+  PRO
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  CANCELLED
+}
+
 model User {
-  id           String     @id @default(uuid())
-  name         String
-  email        String     @unique
-  passwordHash String
-  role         Role       @default(USER)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  documents    Document[]
-  aiUsages     AIUsage[]
+  id                 String             @id @default(uuid())
+  name               String
+  email              String             @unique
+  passwordHash       String
+  role               Role               @default(USER)
+  subscriptionPlan   SubscriptionPlan   @default(FREE)
+  subscriptionStatus SubscriptionStatus @default(ACTIVE)
+  razorpayCustomerId String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  documents          Document[]
+  aiUsages           AIUsage[]
 
   @@map("users")
 }
@@ -50,6 +64,7 @@ model Document {
   aiUsages         AIUsage[]
 
   @@index([userId])
+  @@index([createdAt])
 }
 
 model AIUsage {
@@ -58,6 +73,7 @@ model AIUsage {
   user          User     @relation(fields: [userId], references: [id])
   documentId    String
   document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  provider      String   @default("gemini")
   model         String
   inputTokens   Int
   outputTokens  Int
@@ -68,4 +84,5 @@ model AIUsage {
 
   @@index([userId])
   @@index([documentId])
+  @@index([createdAt])
 }

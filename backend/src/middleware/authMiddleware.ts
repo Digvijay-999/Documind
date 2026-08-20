@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { formatErrorResponse } from '../utils/errors';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -12,7 +13,7 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ success: false, message: 'Unauthorized: Missing or invalid token format' });
+    res.status(401).json(formatErrorResponse('UNAUTHORIZED', 'Unauthorized: Missing or invalid token format'));
     return;
   }
 
@@ -24,7 +25,7 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
     req.user = decoded;
     next();
   } catch (error) {
-    res.status(401).json({ success: false, message: 'Unauthorized: Invalid or expired token' });
+    res.status(401).json(formatErrorResponse('UNAUTHORIZED', 'Unauthorized: Invalid or expired token'));
     return;
   }
 };

@@ -5,42 +5,52 @@ import fs from 'fs';
 import path from 'path';
 
 // Mock LLM SDK
-jest.mock('@google/genai', () => {
-  return {
-    GoogleGenAI: jest.fn().mockImplementation(() => {
-      return {
-        models: {
-          generateContent: jest.fn().mockImplementation(async (params) => {
-            const prompt = params.contents;
+jest.mock('groq-sdk', () => {
+  return jest.fn().mockImplementation(() => {
+    return {
+      chat: {
+        completions: {
+          create: jest.fn().mockImplementation(async (params) => {
+            const prompt = params.messages?.find((m: any) => m.role === 'user')?.content || '';
+            if (params.stream) {
+              return (async function* () {
+                yield { choices: [{ delta: { content: 'This ' } }] };
+                yield { choices: [{ delta: { content: 'is ' } }] };
+                yield { choices: [{ delta: { content: 'a stream.' } }] };
+              })();
+            }
+
             // Simulated defense check
             if (prompt.includes('Ignore previous instructions')) {
               return {
-                text: JSON.stringify({
-                  answer: "I cannot fulfill this request. The document contains malicious instructions.",
-                  sources: []
-                }),
-                usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 }
+                choices: [{
+                  message: {
+                    content: JSON.stringify({
+                      answer: "I cannot fulfill this request. The document contains malicious instructions.",
+                      sources: []
+                    })
+                  }
+                }],
+                usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 }
               };
             }
 
             return {
-              text: JSON.stringify({
-                answer: "This is a mocked structured answer.",
-                sources: [{ documentId: 'mock-doc', chunkIndex: 0, score: 0.99 }]
-              }),
-              usageMetadata: { promptTokenCount: 50, candidatesTokenCount: 20, totalTokenCount: 70 }
+              choices: [{
+                message: {
+                  content: JSON.stringify({
+                    answer: "This is a mocked structured answer.",
+                    sources: [{ documentId: 'mock-doc', chunkIndex: 0, score: 0.99 }]
+                  })
+                }
+              }],
+              usage: { prompt_tokens: 50, completion_tokens: 20, total_tokens: 70 }
             };
-          }),
-          generateContentStream: jest.fn().mockImplementation(async function* () {
-            yield { text: 'This ' };
-            yield { text: 'is ' };
-            yield { text: 'a stream.' };
           })
         }
-      };
-    }),
-    Type: { OBJECT: 'OBJECT', STRING: 'STRING', ARRAY: 'ARRAY', INTEGER: 'INTEGER', NUMBER: 'NUMBER' }
-  };
+      }
+    };
+  });
 });
 
 jest.mock('pdf-parse', () => {
@@ -51,8 +61,8 @@ jest.mock('pdf-parse', () => {
 jest.mock('../src/services/embedding.service', () => {
   return {
     EmbeddingService: jest.fn().mockImplementation(() => ({
-      generateEmbedding: jest.fn().mockResolvedValue(Array(768).fill(0.1)),
-      generateEmbeddings: jest.fn().mockResolvedValue([Array(768).fill(0.1)]),
+      generateEmbedding: jest.fn().mockResolvedValue(Array(2048).fill(0.1)),
+      generateEmbeddings: jest.fn().mockResolvedValue([Array(2048).fill(0.1)]),
     })),
   };
 });
@@ -127,7 +137,8 @@ describe('AI Chat & Streaming Endpoints', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data.answer).toBeDefined();
     
-    // Check if usage was recorded
+    // Check if usage was recorded (allow async save to complete)
+    await new Promise(resolve => setTimeout(resolve, 50));
     const usage = await prisma.aIUsage.findFirst({ where: { documentId } });
     expect(usage).not.toBeNull();
     expect(usage?.totalTokens).toBeGreaterThan(0);

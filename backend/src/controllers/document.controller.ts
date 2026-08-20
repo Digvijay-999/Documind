@@ -9,6 +9,9 @@ import { ChunkingService } from '../services/chunking.service';
 import { EmbeddingService } from '../services/embedding.service';
 import { VectorService } from '../services/vector.service';
 import { RagService } from '../services/rag.service';
+import { emitDocumentStatus } from '../websocket/socket.service';
+import { searchSchema } from '../utils/validation';
+import { formatErrorResponse } from '../utils/errors';
 import { z } from 'zod';
 
 const embeddingService = new EmbeddingService();
@@ -20,18 +23,18 @@ export const uploadDocument = async (req: AuthRequest, res: Response): Promise<v
   const file = req.file;
 
   if (!userId) {
-    res.status(401).json({ success: false, message: 'Unauthorized' });
+    res.status(401).json(formatErrorResponse('UNAUTHORIZED', 'Unauthorized'));
     return;
   }
 
   if (!file) {
-    res.status(400).json({ success: false, message: 'No file uploaded' });
+    res.status(400).json(formatErrorResponse('VALIDATION_ERROR', 'No file uploaded', [{ field: 'file', message: 'PDF file is required' }]));
     return;
   }
 
   if (file.mimetype !== 'application/pdf') {
     fs.promises.unlink(file.path).catch(console.error);
-    res.status(400).json({ success: false, message: 'Only PDF files are allowed' });
+    res.status(400).json(formatErrorResponse('VALIDATION_ERROR', 'Only PDF files are allowed', [{ field: 'file', message: 'MIME type must be application/pdf' }]));
     return;
   }
 
@@ -59,8 +62,25 @@ export const uploadDocument = async (req: AuthRequest, res: Response): Promise<v
       },
     });
 
+    // Real-time WebSocket: Upload stage
+    emitDocumentStatus(userId, {
+      documentId: document.id,
+      status: 'PROCESSING',
+      stage: 'uploading',
+      message: 'Upload received',
+      progress: 15,
+    });
+
     // Process PDF synchronously in the background (no queue yet)
     try {
+      emitDocumentStatus(userId, {
+        documentId: document.id,
+        status: 'PROCESSING',
+        stage: 'extracting',
+        message: 'Extracting text from PDF...',
+        progress: 35,
+      });
+
       const dataBuffer = await fs.promises.readFile(file.path);
       const data = await pdfParse(dataBuffer);
       const extractedText = data.text;
@@ -68,6 +88,14 @@ export const uploadDocument = async (req: AuthRequest, res: Response): Promise<v
       // Pipeline: Chunking -> Embedding -> Vector DB
       console.log(`Extracting text for ${document.id}. Text length: ${extractedText.length}`);
       
+      emitDocumentStatus(userId, {
+        documentId: document.id,
+        status: 'PROCESSING',
+        stage: 'chunking',
+        message: 'Generating text chunks...',
+        progress: 55,
+      });
+
       const chunks = ChunkingService.chunkText(extractedText);
       console.log(`Generated ${chunks.length} chunks for ${document.id}`);
 
@@ -75,10 +103,26 @@ export const uploadDocument = async (req: AuthRequest, res: Response): Promise<v
         // Clear any old vectors just in case it's a reprocess
         await vectorService.deleteDocument(document.id);
 
+        emitDocumentStatus(userId, {
+          documentId: document.id,
+          status: 'PROCESSING',
+          stage: 'embedding',
+          message: 'Generating embeddings with Nemotron...',
+          progress: 75,
+        });
+
         const texts = chunks.map(c => c.text);
         console.log(`Generating embeddings for ${document.id}...`);
         const embeddings = await embeddingService.generateEmbeddings(texts);
         console.log(`Embeddings generated. Storing in ChromaDB...`);
+
+        emitDocumentStatus(userId, {
+          documentId: document.id,
+          status: 'PROCESSING',
+          stage: 'storing_vectors',
+          message: 'Indexing vectors in ChromaDB...',
+          progress: 90,
+        });
 
         const metadatas = chunks.map(c => ({
           documentId: document.id,
@@ -97,24 +141,39 @@ export const uploadDocument = async (req: AuthRequest, res: Response): Promise<v
         },
       });
       console.log(`Document ${document.id} processed successfully.`);
+
+      emitDocumentStatus(userId, {
+        documentId: document.id,
+        status: 'READY',
+        stage: 'completed',
+        message: 'Document ready ✓',
+        progress: 100,
+      });
     } catch (parseError) {
       console.error('Document processing failed:', parseError);
       await prisma.document.update({
         where: { id: document.id },
         data: { status: 'FAILED' },
       });
+
+      emitDocumentStatus(userId, {
+        documentId: document.id,
+        status: 'FAILED',
+        stage: 'error',
+        message: 'Document processing failed',
+      });
     }
   } catch (error) {
     console.error('Document upload error:', error);
     fs.promises.unlink(file.path).catch(console.error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+    res.status(500).json(formatErrorResponse('INTERNAL_SERVER_ERROR', 'Internal server error'));
   }
 };
 
 export const getDocuments = async (req: AuthRequest, res: Response): Promise<void> => {
   const userId = req.user?.id;
   if (!userId) {
-    res.status(401).json({ success: false, message: 'Unauthorized' });
+    res.status(401).json(formatErrorResponse('UNAUTHORIZED', 'Unauthorized'));
     return;
   }
 
@@ -133,7 +192,7 @@ export const getDocuments = async (req: AuthRequest, res: Response): Promise<voi
     });
     res.status(200).json({ success: true, data: documents });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Internal server error' });
+    res.status(500).json(formatErrorResponse('INTERNAL_SERVER_ERROR', 'Internal server error'));
   }
 };
 
@@ -142,7 +201,7 @@ export const getDocument = async (req: AuthRequest, res: Response): Promise<void
   const documentId = req.params.id as string;
 
   if (!userId) {
-    res.status(401).json({ success: false, message: 'Unauthorized' });
+    res.status(401).json(formatErrorResponse('UNAUTHORIZED', 'Unauthorized'));
     return;
   }
 
@@ -152,7 +211,7 @@ export const getDocument = async (req: AuthRequest, res: Response): Promise<void
     });
 
     if (!document || document.userId !== userId) {
-      res.status(404).json({ success: false, message: 'Document not found' });
+      res.status(404).json(formatErrorResponse('NOT_FOUND', 'Document not found'));
       return;
     }
 
@@ -169,7 +228,7 @@ export const getDocument = async (req: AuthRequest, res: Response): Promise<void
       },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Internal server error' });
+    res.status(500).json(formatErrorResponse('INTERNAL_SERVER_ERROR', 'Internal server error'));
   }
 };
 
@@ -178,7 +237,7 @@ export const deleteDocument = async (req: AuthRequest, res: Response): Promise<v
   const documentId = req.params.id as string;
 
   if (!userId) {
-    res.status(401).json({ success: false, message: 'Unauthorized' });
+    res.status(401).json(formatErrorResponse('UNAUTHORIZED', 'Unauthorized'));
     return;
   }
 
@@ -188,11 +247,18 @@ export const deleteDocument = async (req: AuthRequest, res: Response): Promise<v
     });
 
     if (!document || document.userId !== userId) {
-      res.status(404).json({ success: false, message: 'Document not found' });
+      res.status(404).json(formatErrorResponse('NOT_FOUND', 'Document not found'));
       return;
     }
 
-    await prisma.document.delete({ where: { id: documentId } });
+    await prisma.$transaction(async (tx) => {
+      // Delete associated AIUsage records explicitly
+      await tx.aIUsage.deleteMany({ where: { documentId } });
+      
+      // Delete the Document itself
+      await tx.document.delete({ where: { id: documentId } });
+    });
+
     await vectorService.deleteDocument(documentId);
 
     // Try to delete the file
@@ -206,20 +272,16 @@ export const deleteDocument = async (req: AuthRequest, res: Response): Promise<v
 
     res.status(200).json({ success: true, message: 'Document deleted successfully' });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Internal server error' });
+    res.status(500).json(formatErrorResponse('INTERNAL_SERVER_ERROR', 'Internal server error'));
   }
 };
-
-const searchSchema = z.object({
-  query: z.string().min(1, 'Query is required')
-});
 
 export const searchDocument = async (req: AuthRequest, res: Response): Promise<void> => {
   const userId = req.user?.id;
   const documentId = req.params.id as string;
 
   if (!userId) {
-    res.status(401).json({ success: false, message: 'Unauthorized' });
+    res.status(401).json(formatErrorResponse('UNAUTHORIZED', 'Unauthorized'));
     return;
   }
 
@@ -231,12 +293,12 @@ export const searchDocument = async (req: AuthRequest, res: Response): Promise<v
     });
 
     if (!document || document.userId !== userId) {
-      res.status(404).json({ success: false, message: 'Document not found or unauthorized' });
+      res.status(404).json(formatErrorResponse('NOT_FOUND', 'Document not found or unauthorized'));
       return;
     }
 
     if (document.status !== 'READY') {
-      res.status(400).json({ success: false, message: 'Document is not fully processed yet' });
+      res.status(400).json(formatErrorResponse('VALIDATION_ERROR', 'Document is not fully processed yet'));
       return;
     }
 
@@ -249,10 +311,12 @@ export const searchDocument = async (req: AuthRequest, res: Response): Promise<v
     });
   } catch (error: any) {
     if (error?.name === 'ZodError') {
-      res.status(400).json({ success: false, message: error.errors?.[0]?.message || 'Validation failed' });
+      const details = error.issues?.map((i: any) => ({ field: i.path.join('.'), message: i.message })) || [];
+      const msg = details[0]?.message || 'Validation failed';
+      res.status(400).json(formatErrorResponse('VALIDATION_ERROR', msg, details));
     } else {
       console.error('Search error:', error);
-      res.status(500).json({ success: false, message: 'Internal server error during search' });
+      res.status(500).json(formatErrorResponse('INTERNAL_SERVER_ERROR', 'Internal server error during search'));
     }
   }
 };

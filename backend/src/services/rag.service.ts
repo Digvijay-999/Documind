@@ -1,6 +1,6 @@
 import { EmbeddingService } from './embedding.service';
 import { VectorService } from './vector.service';
-import { LlmService, StructuredAnswer } from './llm.service';
+import { GroqService, StructuredAnswer } from './groq.service';
 import { UsageService } from './usage.service';
 
 export interface RetrievedChunk {
@@ -12,12 +12,12 @@ export interface RetrievedChunk {
 export class RagService {
   private embeddingService: EmbeddingService;
   private vectorService: VectorService;
-  private llmService: LlmService;
+  private groqService: GroqService;
 
   constructor() {
     this.embeddingService = new EmbeddingService();
     this.vectorService = new VectorService();
-    this.llmService = new LlmService();
+    this.groqService = new GroqService();
   }
 
   private getSystemInstruction(): string {
@@ -95,7 +95,7 @@ ${contextText}
     const prompt = this.formatPrompt(question, chunks);
     const systemInstruction = this.getSystemInstruction();
 
-    const { result, usage } = await this.llmService.generateAnswer(systemInstruction, prompt);
+    const { result, usage } = await this.groqService.generateAnswer(systemInstruction, prompt);
 
     // Filter the sources returned by the LLM to only include valid details from the chunks we passed
     const validSources = result.sources.map(s => {
@@ -115,7 +115,8 @@ ${contextText}
       UsageService.recordUsage({
         userId,
         documentId,
-        model: this.llmService.model,
+        model: this.groqService.model,
+        provider: 'groq',
         inputTokens: usage.promptTokenCount || 0,
         outputTokens: usage.candidatesTokenCount || 0,
         totalTokens: usage.totalTokenCount || 0,
@@ -135,12 +136,12 @@ ${contextText}
     const prompt = this.formatPrompt(question, chunks);
     const systemInstruction = this.getSystemInstruction();
 
-    const responseStream = await this.llmService.generateStream(systemInstruction, prompt);
+    const responseStream = await this.groqService.generateStream(systemInstruction, prompt);
 
     return {
       responseStream,
       chunks,
-      model: this.llmService.model
+      model: this.groqService.model
     };
   }
 }

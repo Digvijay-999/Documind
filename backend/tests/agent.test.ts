@@ -7,64 +7,87 @@ import path from 'path';
 let sendCount = 0;
 
 // Mock LLM SDK
-jest.mock('@google/genai', () => {
-  return {
-    GoogleGenAI: jest.fn().mockImplementation(() => {
-      return {
-        models: {
-          generateContent: jest.fn().mockImplementation(async (params) => {
-            // Mock for standard isolated tool execution like generateSummary / generateQuiz directly
-            // Not used directly in Agent run but used by the tools themselves.
-            return {
-              text: JSON.stringify({
-                summary: "Mock summary",
-                keyPoints: ["Point 1"],
-                questions: [
-                  { question: "Q1", options: ["A", "B"], correctAnswer: "A", explanation: "Ex" }
-                ]
-              }),
-              usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 }
-            };
-          })
-        },
-        chats: {
-          create: jest.fn().mockImplementation((config) => {
-            return {
-              sendMessage: jest.fn().mockImplementation(async ({ message }) => {
-                sendCount++;
+jest.mock('groq-sdk', () => {
+  return jest.fn().mockImplementation(() => {
+    return {
+      chat: {
+        completions: {
+          create: jest.fn().mockImplementation(async (params) => {
+            const isToolCall = params.tools !== undefined;
+            const userMessage = params.messages?.find((m: any) => m.role === 'user')?.content || '';
 
-                // Security Test Injection Simulation
-                if (typeof message === 'string' && message.includes('malicious-instruction')) {
-                  return {
-                    text: JSON.stringify({ answer: "I cannot fulfill this request." }),
-                    usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 5, totalTokenCount: 10 }
+            // Tool mock behavior
+            if (isToolCall) {
+              sendCount++;
+              if (typeof userMessage === 'string' && userMessage.includes('malicious-instruction')) {
+                return {
+                  choices: [{
+                    message: {
+                      content: JSON.stringify({ answer: "I cannot fulfill this request." })
+                    }
+                  }],
+                  usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 }
+                };
+              }
+
+              if (sendCount === 1) {
+                // Return a tool call
+                return {
+                  choices: [{
+                    message: {
+                      tool_calls: [
+                        {
+                          id: 'call_1',
+                          function: {
+                            name: 'generateSummary',
+                            arguments: '{}'
+                          }
+                        },
+                        {
+                          id: 'call_2',
+                          function: {
+                            name: 'generateQuiz',
+                            arguments: '{"questionCount": 2}'
+                          }
+                        }
+                      ]
+                    }
+                  }],
+                  usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 }
+                };
+              } else {
+                // Return final answer
+                return {
+                  choices: [{
+                    message: {
+                      content: JSON.stringify({ answer: "I have generated the summary and the quiz for you." })
+                    }
+                  }],
+                  usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 }
+                };
+              }
+            } else {
+              // Direct tool execution mock (e.g. for isolated test inside executeGenerateSummary if called directly)
+              return {
+                choices: [{
+                  message: {
+                    content: JSON.stringify({
+                      summary: "Mock summary",
+                      keyPoints: ["Point 1"],
+                      questions: [
+                        { question: "Q1", options: ["A", "B"], correctAnswer: "A", explanation: "Ex" }
+                      ]
+                    })
                   }
-                }
-
-                if (sendCount === 1) {
-                  // First turn: model decides to call generateSummary and generateQuiz
-                  return {
-                    functionCalls: [
-                      { name: 'generateSummary', args: {} },
-                      { name: 'generateQuiz', args: { questionCount: 2 } }
-                    ],
-                    usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 10, totalTokenCount: 20 }
-                  };
-                } else {
-                  // Second turn: model gives the final answer
-                  return {
-                    text: JSON.stringify({ answer: "I have generated the summary and the quiz for you." }),
-                    usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 10, totalTokenCount: 20 }
-                  };
-                }
-              })
-            };
+                }],
+                usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 }
+              };
+            }
           })
         }
-      };
-    }),
-    Type: { OBJECT: 'OBJECT', STRING: 'STRING', ARRAY: 'ARRAY', INTEGER: 'INTEGER', NUMBER: 'NUMBER' }
-  };
+      }
+    };
+  });
 });
 
 jest.mock('pdf-parse', () => {
@@ -75,8 +98,8 @@ jest.mock('pdf-parse', () => {
 jest.mock('../src/services/embedding.service', () => {
   return {
     EmbeddingService: jest.fn().mockImplementation(() => ({
-      generateEmbedding: jest.fn().mockResolvedValue(Array(768).fill(0.1)),
-      generateEmbeddings: jest.fn().mockResolvedValue([Array(768).fill(0.1)]),
+      generateEmbedding: jest.fn().mockResolvedValue(Array(2048).fill(0.1)),
+      generateEmbeddings: jest.fn().mockResolvedValue([Array(2048).fill(0.1)]),
     })),
   };
 });

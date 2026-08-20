@@ -7,6 +7,7 @@ export class UsageService {
   static async recordUsage(data: {
     userId: string;
     documentId: string;
+    provider?: string;
     model: string;
     inputTokens: number;
     outputTokens: number;
@@ -14,14 +15,37 @@ export class UsageService {
     latencyMs: number;
   }) {
     try {
-      // Very basic estimated cost calculation.
-      // Example Gemini 2.5 flash: ~$0.075 / 1M input tokens, ~$0.30 / 1M output tokens
-      const estimatedCost = (data.inputTokens * 0.000000075) + (data.outputTokens * 0.00000030);
+      // Basic estimated cost calculation based on model
+      let inputCostPerM = 0;
+      let outputCostPerM = 0;
+
+      const provider = data.provider || 'gemini';
+
+      if (provider === 'groq') {
+        if (data.model.includes('llama-3.3-70b-versatile')) {
+          inputCostPerM = 0.59;
+          outputCostPerM = 0.79;
+        } else if (data.model.includes('llama3-8b-8192') || data.model.includes('llama-3.1-8b')) {
+          inputCostPerM = 0.05;
+          outputCostPerM = 0.08;
+        } else {
+          // generic default
+          inputCostPerM = 0.50;
+          outputCostPerM = 0.50;
+        }
+      } else {
+        // gemini 2.5 flash fallback
+        inputCostPerM = 0.075;
+        outputCostPerM = 0.30;
+      }
+
+      const estimatedCost = (data.inputTokens * (inputCostPerM / 1000000)) + (data.outputTokens * (outputCostPerM / 1000000));
 
       await prisma.aIUsage.create({
         data: {
           userId: data.userId,
           documentId: data.documentId,
+          provider: provider,
           model: data.model,
           inputTokens: data.inputTokens,
           outputTokens: data.outputTokens,

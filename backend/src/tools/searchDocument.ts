@@ -1,19 +1,21 @@
 import { RagService } from '../services/rag.service';
 import prisma from '../utils/prisma';
-import { Type, FunctionDeclaration } from '@google/genai';
 
-export const searchDocumentDeclaration: FunctionDeclaration = {
-  name: 'searchDocument',
-  description: 'Search the document for relevant information based on a specific query. Returns matching text chunks from the document.',
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      query: {
-        type: Type.STRING,
-        description: 'The search query to find in the document.'
-      }
-    },
-    required: ['query']
+export const searchDocumentDeclaration = {
+  type: 'function',
+  function: {
+    name: 'searchDocument',
+    description: 'Search the document for relevant information based on a specific query. Returns matching text chunks from the document.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'The search query to find in the document.'
+        }
+      },
+      required: ['query']
+    }
   }
 };
 

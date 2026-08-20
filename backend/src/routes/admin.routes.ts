@@ -1,10 +1,12 @@
 import { Router } from 'express';
-import { getAdminTest } from '../controllers/admin.controller';
+import { getAllDocuments } from '../controllers/admin.controller';
 import { authMiddleware } from '../middleware/authMiddleware';
-import { requireRole } from '../middleware/roleMiddleware';
+import { requireAdmin } from '../middleware/adminMiddleware';
 
 const router = Router();
 
-router.get('/test', authMiddleware, requireRole('ADMIN'), getAdminTest);
+// Endpoint demonstrating SQL JOIN via Prisma
+// GET /api/admin/documents
+router.get('/documents', authMiddleware, requireAdmin, getAllDocuments);
 
 export default router;
