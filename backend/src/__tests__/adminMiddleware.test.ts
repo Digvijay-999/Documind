@@ -10,8 +10,9 @@ describe('Admin Middleware', () => {
   beforeEach(() => {
     mockResponse = {
       status: jest.fn().mockReturnThis(),
-      json: jest.fn()
+      json: jest.fn(),
     };
+    nextFunction = jest.fn();
   });
 
   it('should return 401 if no user is present', () => {
@@ -19,22 +20,32 @@ describe('Admin Middleware', () => {
     requireAdmin(mockRequest as AuthRequest, mockResponse as Response, nextFunction);
 
     expect(mockResponse.status).toHaveBeenCalledWith(401);
-    expect(mockResponse.json).toHaveBeenCalledWith({ success: false, message: 'Unauthorized' });
+    expect(mockResponse.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        error: expect.objectContaining({ code: 'UNAUTHORIZED' }),
+      })
+    );
   });
 
   it('should return 403 if user is not an admin', () => {
     mockRequest = {
-      user: { id: '1', email: 'test@test.com', role: 'USER' }
+      user: { id: '1', role: 'USER' },
     };
     requireAdmin(mockRequest as AuthRequest, mockResponse as Response, nextFunction);
 
     expect(mockResponse.status).toHaveBeenCalledWith(403);
-    expect(mockResponse.json).toHaveBeenCalledWith({ success: false, message: 'Forbidden: Admins only' });
+    expect(mockResponse.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        error: expect.objectContaining({ code: 'FORBIDDEN' }),
+      })
+    );
   });
 
   it('should call next if user is an admin', () => {
     mockRequest = {
-      user: { id: '1', email: 'admin@test.com', role: 'ADMIN' }
+      user: { id: '1', role: 'ADMIN' },
     };
     requireAdmin(mockRequest as AuthRequest, mockResponse as Response, nextFunction);
 

@@ -12,17 +12,17 @@ export const loginSchema = z.object({
 });
 
 export const searchSchema = z.object({
-  query: z.string().trim().min(1, 'Search query is required').max(1000, 'Query cannot exceed 1000 characters'),
+  query: z.string().trim().min(1, 'Search query is required').max(4000, 'Query cannot exceed 4000 characters'),
 });
 
 export const chatSchema = z.object({
   documentId: z.string().trim().min(1, 'Document ID is required').max(100, 'Invalid document ID'),
-  question: z.string().trim().min(1, 'Question is required').max(2000, 'Question cannot exceed 2000 characters'),
+  question: z.string().trim().min(1, 'Question is required').max(4000, 'Question cannot exceed 4000 characters'),
 });
 
 export const agentSchema = z.object({
   documentId: z.string().trim().min(1, 'Document ID is required').max(100, 'Invalid document ID'),
-  message: z.string().trim().min(1, 'Message is required').max(2000, 'Message cannot exceed 2000 characters'),
+  message: z.string().trim().min(1, 'Message is required').max(4000, 'Message cannot exceed 4000 characters'),
 });
 
 export const createOrderSchema = z.object({

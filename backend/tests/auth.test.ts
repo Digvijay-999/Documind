@@ -89,7 +89,7 @@ describe('Auth Endpoints', () => {
 
   it('should deny USER access to admin endpoint', async () => {
     const res = await request(app)
-      .get('/api/admin/test')
+      .get('/api/admin/documents')
       .set('Authorization', `Bearer ${userToken}`);
     expect(res.statusCode).toBe(403);
   });
@@ -116,7 +116,7 @@ describe('Auth Endpoints', () => {
     adminToken = loginRes.body.token;
 
     const res = await request(app)
-      .get('/api/admin/test')
+      .get('/api/admin/documents')
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.statusCode).toBe(200);
     expect(res.body.success).toBe(true);

@@ -8,8 +8,12 @@ import chatRoutes from './chat.routes';
 
 import publicRoutes from './public.routes';
 import paymentRoutes from './payment.routes';
+import { generalRateLimit } from '../middleware/rateLimiter';
 
 const router = Router();
+
+// General rate limiter applied across all /api routes
+router.use(generalRateLimit);
 
 // Health Check Endpoint
 router.get('/health', (req: Request, res: Response) => {

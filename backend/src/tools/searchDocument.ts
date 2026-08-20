@@ -20,9 +20,11 @@ export const searchDocumentDeclaration = {
 };
 
 export async function executeSearchDocument(userId: string, documentId: string, args: any) {
-  if (!args.query) {
-    throw new Error('searchDocument requires a query');
+  if (!args || typeof args.query !== 'string' || !args.query.trim()) {
+    throw new Error('searchDocument requires a non-empty string query');
   }
+
+  const query = args.query.trim().substring(0, 4000);
 
   // Double check authorization to be safe
   const doc = await prisma.document.findUnique({ where: { id: documentId } });
@@ -31,7 +33,7 @@ export async function executeSearchDocument(userId: string, documentId: string, 
   }
 
   const ragService = new RagService();
-  const chunks = await ragService.retrieveRelevantChunks(documentId, args.query, 5);
+  const chunks = await ragService.retrieveRelevantChunks(documentId, query, 5);
 
   if (chunks.length === 0) {
     return { result: "No relevant information found in the document for that query." };

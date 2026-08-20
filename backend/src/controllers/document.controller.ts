@@ -12,6 +12,7 @@ import { RagService } from '../services/rag.service';
 import { emitDocumentStatus } from '../websocket/socket.service';
 import { searchSchema } from '../utils/validation';
 import { formatErrorResponse } from '../utils/errors';
+import { redisClient } from '../config/redis';
 import { z } from 'zod';
 
 const embeddingService = new EmbeddingService();
@@ -50,6 +51,9 @@ export const uploadDocument = async (req: AuthRequest, res: Response): Promise<v
         status: 'PROCESSING',
       },
     });
+
+    // Invalidate cached document list for this user
+    await invalidateUserDocumentsCache(userId);
 
     res.status(201).json({
       success: true,
@@ -140,6 +144,7 @@ export const uploadDocument = async (req: AuthRequest, res: Response): Promise<v
           status: 'READY',
         },
       });
+      await invalidateUserDocumentsCache(userId);
       console.log(`Document ${document.id} processed successfully.`);
 
       emitDocumentStatus(userId, {
@@ -170,6 +175,16 @@ export const uploadDocument = async (req: AuthRequest, res: Response): Promise<v
   }
 };
 
+const invalidateUserDocumentsCache = async (userId: string) => {
+  if (redisClient.isOpen) {
+    try {
+      await redisClient.del(`documents:user:${userId}`);
+    } catch (err) {
+      console.warn(`[Cache] Failed to invalidate documents:user:${userId}:`, err);
+    }
+  }
+};
+
 export const getDocuments = async (req: AuthRequest, res: Response): Promise<void> => {
   const userId = req.user?.id;
   if (!userId) {
@@ -177,7 +192,25 @@ export const getDocuments = async (req: AuthRequest, res: Response): Promise<voi
     return;
   }
 
+  const cacheKey = `documents:user:${userId}`;
+  const CACHE_TTL_SECONDS = 30;
+
   try {
+    // 1. Check Redis cache
+    if (redisClient.isOpen) {
+      try {
+        const cached = await redisClient.get(cacheKey);
+        if (cached) {
+          const documents = JSON.parse(cached);
+          res.status(200).json({ success: true, data: documents, cached: true });
+          return;
+        }
+      } catch (cacheErr) {
+        console.warn(`[Cache:getDocuments] Redis read failed for ${userId}:`, cacheErr);
+      }
+    }
+
+    // 2. Query PostgreSQL
     const documents = await prisma.document.findMany({
       where: { userId },
       select: {
@@ -190,7 +223,17 @@ export const getDocuments = async (req: AuthRequest, res: Response): Promise<voi
       },
       orderBy: { createdAt: 'desc' },
     });
-    res.status(200).json({ success: true, data: documents });
+
+    // 3. Store in Redis cache
+    if (redisClient.isOpen) {
+      try {
+        await redisClient.setEx(cacheKey, CACHE_TTL_SECONDS, JSON.stringify(documents));
+      } catch (cacheErr) {
+        console.warn(`[Cache:getDocuments] Redis write failed for ${userId}:`, cacheErr);
+      }
+    }
+
+    res.status(200).json({ success: true, data: documents, cached: false });
   } catch (error) {
     res.status(500).json(formatErrorResponse('INTERNAL_SERVER_ERROR', 'Internal server error'));
   }
@@ -260,6 +303,9 @@ export const deleteDocument = async (req: AuthRequest, res: Response): Promise<v
     });
 
     await vectorService.deleteDocument(documentId);
+
+    // Invalidate user document list cache
+    await invalidateUserDocumentsCache(userId);
 
     // Try to delete the file
     try {

@@ -67,6 +67,19 @@ jest.mock('../src/services/embedding.service', () => {
   };
 });
 
+// Mock ChatSession to avoid Mongoose buffering timeout in unit tests
+jest.mock('../src/models/ChatSession', () => ({
+  ChatSession: {
+    findOneAndUpdate: jest.fn().mockResolvedValue({
+      messages: [],
+      save: jest.fn().mockResolvedValue(true),
+    }),
+    findOne: jest.fn().mockResolvedValue({
+      messages: [],
+    }),
+  },
+}));
+
 const MINIMAL_PDF_BASE64 = 'JVBERi0xLjQKMSAwIG9iaiA8PC9UeXBlIC9DYXRhbG9nIC9QYWdlcyAyIDAgUj4+IGVuZG9iaiAyIDAgb2JqIDw8L1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDE+PiBlbmRvYmogMyAwIG9iaiA8PC9UeXBlIC9QYWdlIC9QYXJlbnQgMiAwIFIgL01lZGlhQm94IFswIDAgMTAwIDEwMF0+PiBlbmRvYmogeHJlZiAwIDQgMDAwMDAwMDAwMCA2NTUzNSBmIA0KMDAwMDAwMDAwOSAwMDAwMCBuIA0KMDAwMDAwMDU2IDAwMDAwIG4gDQowMDAwMDAwMTExIDAwMDAwIG4gDQp0cmFpbGVyIDw8L1NpemUgNCAvUm9vdCAxIDAgUj4+IHN0YXJ0eHJlZiAxODkgJSVFT0Y=';
 
 describe('AI Chat & Streaming Endpoints', () => {
