@@ -1,9 +1,50 @@
-version: '3.8'
-
 services:
-  # Prepared for Phase 2+
+  # DocuMind AI Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: documind-backend
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DATABASE_URL: postgresql://${DB_USER:-documind}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-documind_db}?schema=public
+      REDIS_URL: redis://redis:6379
+      CHROMADB_URL: http://chromadb:8000
+      MONGODB_URI: ${MONGODB_URI:-mongodb://root:example@mongodb:27017/documind?authSource=admin}
+      JWT_SECRET: ${JWT_SECRET:-default_jwt_secret_change_me_in_production}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET}
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+      - redis
+      - chromadb
+    restart: unless-stopped
+
+  # DocuMind AI Frontend Next.js Client
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: documind-frontend
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: http://backend:5000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Relational Database for Users, Documents, and AI Usage
   postgres:
     image: postgres:15-alpine
+    container_name: documind-postgres
     environment:
       POSTGRES_USER: ${DB_USER:-documind}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
@@ -12,7 +53,9 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
+  # High-performance Vector Store for RAG Embeddings
   chromadb:
     image: chromadb/chroma:latest
     container_name: documind-chromadb
@@ -22,8 +65,20 @@ services:
       - chroma_data:/chroma/chroma
     restart: unless-stopped
 
+  # Cache & Rate Limiting In-Memory Store
+  redis:
+    image: redis:7-alpine
+    container_name: documind-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # Document Chat Session Store (Local Dev Fallback / Atlas reachable externally)
   mongodb:
     image: mongo:6
+    container_name: documind-mongo
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-root}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-example}
@@ -31,16 +86,10 @@ services:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   chroma_data:
-  mongodb_data:
   redis_data:
+  mongodb_data:

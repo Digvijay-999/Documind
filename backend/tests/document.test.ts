@@ -76,8 +76,10 @@ describe('Document Endpoints', () => {
   });
 
   afterAll(async () => {
-    await prisma.document.deleteMany();
-    await prisma.user.deleteMany();
+    try {
+      await prisma.document.deleteMany();
+      await prisma.user.deleteMany();
+    } catch (e) {}
     if (fs.existsSync(dummyTxtPath)) fs.unlinkSync(dummyTxtPath);
     
     // Clean up uploaded files in test environment

@@ -40,6 +40,7 @@ Bearer <your_jwt_token>
 | **Payments** | `POST` | `/api/payments/create-order` | Bearer JWT | Create Razorpay order for ₹499 | `200`, `401`, `500` |
 | **Payments** | `POST` | `/api/payments/verify` | Bearer JWT | Verify HMAC signature & upgrade to PRO | `200`, `400`, `401`, `500` |
 | **Admin** | `GET` | `/api/admin/documents` | Admin JWT | Cross-user document audit with SQL JOIN | `200`, `401`, `403`, `500` |
+| **Admin** | `GET` | `/api/admin/chat-stats` | Admin JWT | Aggregation pipeline ($match, $group, $sort) | `200`, `401`, `403`, `500` |
 
 ---
 
