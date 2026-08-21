@@ -4,6 +4,19 @@ import prisma from '../utils/prisma';
 import { ChatSession } from '../models/ChatSession';
 import { formatErrorResponse } from '../utils/errors';
 
+/**
+ * Relational SQL JOIN Endpoint
+ * 
+ * Demonstrates SQL JOINs in PostgreSQL:
+ * Combines Document and User records using the foreign key relationship (Document.userId -> User.id).
+ * In PostgreSQL, this executes:
+ *   SELECT d.id AS "documentId", d."originalFileName" AS "fileName", d.status, d."createdAt", u.email AS "ownerEmail"
+ *   FROM "Document" d
+ *   LEFT JOIN "users" u ON d."userId" = u.id
+ *   ORDER BY d."createdAt" DESC;
+ * 
+ * GET /api/admin/documents
+ */
 export const getAllDocuments = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const documents = await prisma.document.findMany({
@@ -29,7 +42,7 @@ export const getAllDocuments = async (req: AuthRequest, res: Response): Promise<
 
     res.status(200).json({ success: true, data: formattedDocuments });
   } catch (error) {
-    console.error('Failed to fetch admin documents:', error);
+    console.error('Failed to fetch admin documents with SQL JOIN:', error);
     res.status(500).json(formatErrorResponse('INTERNAL_SERVER_ERROR', 'Internal server error'));
   }
 };
