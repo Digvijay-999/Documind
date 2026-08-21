@@ -5,6 +5,10 @@ import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { formatErrorResponse } from '../utils/errors';
 
+/**
+ * MongoDB CRUD: READ Chat History
+ * GET /api/chat/:documentId
+ */
 export const getChatHistory = async (req: AuthRequest, res: Response): Promise<void> => {
   const userId = req.user?.id;
 
@@ -38,6 +42,10 @@ const messageSchema = z.object({
   content: z.string().trim().min(1, 'Content is required')
 });
 
+/**
+ * MongoDB CRUD: CREATE / UPDATE Chat Messages
+ * POST /api/chat/:documentId
+ */
 export const addChatMessage = async (req: AuthRequest, res: Response): Promise<void> => {
   const userId = req.user?.id;
   const { documentId } = req.params;
@@ -77,5 +85,35 @@ export const addChatMessage = async (req: AuthRequest, res: Response): Promise<v
       console.error('Failed to add chat message:', error);
       res.status(500).json(formatErrorResponse('INTERNAL_SERVER_ERROR', 'Internal server error'));
     }
+  }
+};
+
+/**
+ * MongoDB CRUD: DELETE Chat History
+ * DELETE /api/chat/:documentId
+ */
+export const deleteChatHistory = async (req: AuthRequest, res: Response): Promise<void> => {
+  const userId = req.user?.id;
+  const { documentId } = req.params;
+
+  if (!userId) {
+    res.status(401).json(formatErrorResponse('UNAUTHORIZED', 'Unauthorized'));
+    return;
+  }
+
+  try {
+    const docId = documentId as string;
+    // Verify document ownership first
+    const document = await prisma.document.findUnique({ where: { id: docId } });
+    if (!document || document.userId !== userId) {
+      res.status(404).json(formatErrorResponse('NOT_FOUND', 'Document not found or unauthorized'));
+      return;
+    }
+
+    await ChatSession.findOneAndDelete({ userId, documentId: docId });
+    res.status(200).json({ success: true, message: 'Chat history deleted successfully' });
+  } catch (error: any) {
+    console.error('Failed to delete chat history:', error);
+    res.status(500).json(formatErrorResponse('INTERNAL_SERVER_ERROR', 'Internal server error'));
   }
 };

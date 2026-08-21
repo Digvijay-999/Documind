@@ -5,6 +5,7 @@
  * 1. Function Declaration Hoisting
  * 2. Event Loop (Synchronous Call Stack vs Microtask Queue vs Macrotask Queue)
  * 3. Asynchronous Patterns: Promises vs Callbacks
+ * 4. Lexical Scoping & Closures
  */
 
 // ==========================================
@@ -131,5 +132,30 @@ export async function compareAsyncPatterns(): Promise<{
   return {
     callback: callbackResult,
     promise: promiseResult,
+  };
+}
+
+// ==========================================
+// 4. JAVASCRIPT — CLOSURES
+// ==========================================
+
+/**
+ * Demonstrates JavaScript Closures:
+ * The returned functions retain lexical access to the private `count` state
+ * across subsequent invocations after createRequestCounter has returned.
+ */
+export function createRequestCounter(initialCount: number = 0) {
+  let count = initialCount;
+
+  return {
+    increment: () => {
+      count += 1;
+      return count;
+    },
+    getCount: () => count,
+    reset: () => {
+      count = initialCount;
+      return count;
+    },
   };
 }

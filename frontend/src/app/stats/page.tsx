@@ -4,6 +4,7 @@ import {
   demonstrateHoisting,
   demonstrateEventLoopAsync,
   compareAsyncPatterns,
+  createRequestCounter,
 } from '@/lib/javascriptConcepts';
 
 export const dynamic = 'force-dynamic';
@@ -53,6 +54,10 @@ export default async function StatsPage() {
   const hoistingResult = demonstrateHoisting();
   const eventLoopResult = await demonstrateEventLoopAsync();
   const asyncPatternsResult = await compareAsyncPatterns();
+  
+  // Demonstrating Closures
+  const counter = createRequestCounter(stats.totalUsers);
+  const nextProjectedUser = counter.increment();
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-6 md:p-24 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
@@ -89,6 +94,7 @@ export default async function StatsPage() {
           <p><strong>Hoisting Verification:</strong> {hoistingResult}</p>
           <p><strong>Event Loop Order:</strong> {eventLoopResult.join(' ➔ ')}</p>
           <p><strong>Async Patterns:</strong> {asyncPatternsResult.callback} | {asyncPatternsResult.promise}</p>
+          <p><strong>Closure Stateful Counter:</strong> Base: {stats.totalUsers} ➔ Next Projected: {nextProjectedUser}</p>
         </div>
       </div>
     </main>
